@@ -2,7 +2,7 @@
   "name": "codexcomplete",
   "displayName": "CodexComplete",
   "description": "Copilot-style inline autocomplete powered by OpenAI Codex profiles.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "MaorKavod",
   "license": "MIT",
   "icon": "media/codexcomplete-activity.svg.png",

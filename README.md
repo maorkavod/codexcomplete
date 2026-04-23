@@ -45,7 +45,6 @@ CodexComplete is a VS Code autocomplete extension that delivers Copilot-style in
 
 ## Notes
 
-- This is a POC and intentionally lightweight.
 - API key is never stored in plaintext settings.
 
 ## Open Source
