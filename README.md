@@ -2,7 +2,7 @@
 
 CodexComplete is a VS Code autocomplete extension that delivers Copilot-style inline suggestions using OpenAI API models (default: `gpt-5.3-codex`).
 
-![CodexComplete Preview](./media/marketplace-preview.jpg)
+![CodexComplete Preview](./media/marketplace-preview.png)
 
 ## Features (POC)
 
