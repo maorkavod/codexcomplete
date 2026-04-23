@@ -1,0 +1,141 @@
+{
+  "name": "codexcomplete",
+  "displayName": "CodexComplete",
+  "description": "Copilot-style inline autocomplete powered by OpenAI Codex profiles.",
+  "version": "0.0.1",
+  "publisher": "MaorKavod",
+  "license": "MIT",
+  "icon": "media/codexcomplete-activity.svg.png",
+  "homepage": "https://github.com/maor-kavod/codexcomplete#readme",
+  "author": {
+    "name": "Maor Kavod",
+    "email": "Maor.kavod@gmail.com"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Machine Learning"
+  ],
+  "keywords": [
+    "autocomplete",
+    "ai",
+    "openai",
+    "codex",
+    "inline-completion"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/maorkavod/codexcomplete"
+  },
+  "bugs": {
+    "url": "https://github.com/maorkavod/codexcomplete/issues"
+  },
+  "files": [
+    "out/**/*.js",
+    "media/**",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "package.json"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:codexComplete.setApiKey",
+    "onCommand:codexComplete.completeNow",
+    "onCommand:codexComplete.openPanel",
+    "onView:codexComplete.sidebarView"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codexCompleteContainer",
+          "title": "CodexComplete",
+          "icon": "media/codexcomplete-activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "codexCompleteContainer": [
+        {
+          "id": "codexComplete.sidebarView",
+          "name": "CodexComplete",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codexComplete.setApiKey",
+        "title": "CodexComplete: Set OpenAI API Key"
+      },
+      {
+        "command": "codexComplete.completeNow",
+        "title": "CodexComplete: Complete Now"
+      },
+      {
+        "command": "codexComplete.openPanel",
+        "title": "CodexComplete: Open Diagnostics Panel"
+      }
+    ],
+    "configuration": {
+      "title": "CodexComplete",
+      "properties": {
+        "codexComplete.model": {
+          "type": "string",
+          "default": "gpt-5.3-codex",
+          "markdownDescription": "Model used for completions. Default is gpt-5.3-codex. You can pick any model from the CodexComplete GUI dropdown (loaded from your OpenAI account), or type a model id manually."
+        },
+        "codexComplete.requestTimeoutMs": {
+          "type": "number",
+          "default": 15000,
+          "minimum": 1000,
+          "maximum": 120000,
+          "markdownDescription": "Request timeout in milliseconds."
+        },
+        "codexComplete.debounceMs": {
+          "type": "number",
+          "default": 120,
+          "minimum": 0,
+          "maximum": 2000,
+          "markdownDescription": "Debounce before sending autocomplete request."
+        },
+        "codexComplete.maxContextChars": {
+          "type": "number",
+          "default": 6000,
+          "minimum": 500,
+          "maximum": 20000,
+          "markdownDescription": "Maximum combined prefix/suffix characters to send for context."
+        },
+        "codexComplete.enableInline": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Enable inline ghost-text autocomplete suggestions."
+        },
+        "codexComplete.dailyTokenLimit": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "default": null,
+          "minimum": 1,
+          "maximum": 5000000,
+          "markdownDescription": "Maximum total tokens allowed per local calendar day. Set null for no limit."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.8",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.4"
+  }
+}
