@@ -2,7 +2,7 @@
   "name": "codexcomplete",
   "displayName": "CodexComplete",
   "description": "Copilot-style inline autocomplete powered by OpenAI Codex profiles.",
-  "version": "0.0.4",
+  "version": "0.0.6",
   "publisher": "MaorKavod",
   "license": "MIT",
   "icon": "media/marketplace-icon.png",
@@ -129,13 +129,21 @@
     }
   },
   "scripts": {
-    "compile": "tsc -p ./",
-    "watch": "tsc -watch -p ./",
-    "vscode:prepublish": "npm run compile"
+    "compile": "npm run build:webview && tsc -p ./",
+    "watch": "npm run build:webview && tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile",
+    "build:webview": "node ./scripts/build-webview.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.14.8",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
     "@types/vscode": "^1.90.0",
+    "esbuild": "^0.28.0",
     "typescript": "^5.5.4"
+  },
+  "dependencies": {
+    "react": "^19.2.5",
+    "react-dom": "^19.2.5"
   }
 }
