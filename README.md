@@ -12,6 +12,8 @@ CodexComplete is a VS Code autocomplete extension that delivers Copilot-style in
 - API key stored securely in VS Code `SecretStorage`.
 - Activity Bar icon with a full CodexComplete GUI sidebar.
 - In-panel settings editor (model, timeout, debounce, context, inline toggle).
+- Built-in safety: completion is automatically disabled for files/paths containing `env`.
+- Custom ignored-path regex list in settings/UI for additional exclusion rules.
 - Model dropdown auto-loads all models available to the user's OpenAI API key.
 - Live diagnostics + token usage charts grouped by day/week/month.
 - Optional daily token limit (null = no limit).
@@ -44,6 +46,7 @@ CodexComplete is a VS Code autocomplete extension that delivers Copilot-style in
 - `codexComplete.maxContextChars`
 - `codexComplete.enableInline`
 - `codexComplete.dailyTokenLimit`
+- `codexComplete.ignorePathRegexes`
 
 ## Notes
 

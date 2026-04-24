@@ -62,6 +62,13 @@ export class CompletionEngine {
     const config = this.getConfig();
     const start = Date.now();
 
+    if (shouldIgnoreDocument(params.document, config.ignorePathRegexes)) {
+      return {
+        text: null,
+        diagnostics: this.diag(config.model, start, null)
+      };
+    }
+
     if (params.mode === "inline" && !config.enableInline) {
       return {
         text: null,
@@ -201,6 +208,29 @@ function buildCacheKey(model: string, mode: CompletionMode, prefix: string, suff
   const prefixTail = prefix.slice(-240);
   const suffixHead = suffix.slice(0, 100);
   return `${model}|${mode}|${prefixTail}|${suffixHead}`;
+}
+
+function shouldIgnoreDocument(document: vscode.TextDocument, regexPatterns: string[]): boolean {
+  const filePath = document.fileName || document.uri.fsPath || document.uri.path;
+  const normalizedPath = filePath.replace(/\\/g, "/");
+  const fileName = normalizedPath.split("/").pop() ?? normalizedPath;
+  const lowerFileName = fileName.toLowerCase();
+
+  if (lowerFileName.includes("env")) {
+    return true;
+  }
+
+  for (const pattern of regexPatterns) {
+    try {
+      if (new RegExp(pattern).test(normalizedPath)) {
+        return true;
+      }
+    } catch {
+      // Invalid regexes are ignored to avoid breaking completions.
+    }
+  }
+
+  return false;
 }
 
 function sanitizeUsageStats(raw?: UsageStats): UsageStats {

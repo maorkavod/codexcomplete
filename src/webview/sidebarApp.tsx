@@ -13,6 +13,7 @@ interface ExtensionConfig {
   maxContextChars: number;
   enableInline: boolean;
   dailyTokenLimit: number | null;
+  ignorePathRegexes: string[];
 }
 
 interface UsagePoint {
@@ -65,7 +66,8 @@ const emptyState: SidebarState = {
     debounceMs: 120,
     maxContextChars: 6000,
     enableInline: true,
-    dailyTokenLimit: null
+    dailyTokenLimit: null,
+    ignorePathRegexes: ["env"]
   },
   diagnostics: {
     model: "-",
@@ -88,6 +90,7 @@ function App(): React.JSX.Element {
   const [state, setState] = useState<SidebarState>(emptyState);
   const [draft, setDraft] = useState<ExtensionConfig>(emptyState.settings);
   const [period, setPeriod] = useState<ChartPeriod>("week");
+  const [newIgnoreRegex, setNewIgnoreRegex] = useState<string>("");
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
@@ -99,6 +102,7 @@ function App(): React.JSX.Element {
       const nextState = message.payload as SidebarState;
       setState(nextState);
       setDraft(nextState.settings);
+      setNewIgnoreRegex("");
     };
 
     window.addEventListener("message", onMessage);
@@ -216,6 +220,29 @@ function App(): React.JSX.Element {
             </div>
           </div>
 
+          <RegexIgnoreEditor
+            value={draft.ignorePathRegexes}
+            newValue={newIgnoreRegex}
+            onNewValueChange={setNewIgnoreRegex}
+            onAdd={() => {
+              const trimmed = newIgnoreRegex.trim();
+              if (!trimmed || !isValidRegex(trimmed) || draft.ignorePathRegexes.includes(trimmed)) {
+                return;
+              }
+              setDraft((current) => ({
+                ...current,
+                ignorePathRegexes: [...current.ignorePathRegexes, trimmed]
+              }));
+              setNewIgnoreRegex("");
+            }}
+            onRemove={(index) =>
+              setDraft((current) => ({
+                ...current,
+                ignorePathRegexes: current.ignorePathRegexes.filter((_item, idx) => idx !== index)
+              }))
+            }
+          />
+
           <div className="cc-actions">
             <button className="cc-primary" onClick={() => post({ type: "saveSettings", payload: draft })}>
               Save Settings
@@ -269,6 +296,68 @@ function App(): React.JSX.Element {
   );
 }
 
+interface RegexIgnoreEditorProps {
+  value: string[];
+  newValue: string;
+  onNewValueChange: (value: string) => void;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+}
+
+function RegexIgnoreEditor(props: RegexIgnoreEditorProps): React.JSX.Element {
+  const trimmed = props.newValue.trim();
+  const canAdd = trimmed.length > 0 && isValidRegex(trimmed) && !props.value.includes(trimmed);
+  const invalidEntries = props.value
+    .map((entry, index) => ({ entry, index }))
+    .filter((item) => !isValidRegex(item.entry));
+
+  return (
+    <div className="cc-regex-editor">
+      <div className="cc-regex-head">
+        <h3>Ignored Paths (Regex)</h3>
+        <small>Autocomplete is always blocked when filename/path contains "env".</small>
+      </div>
+
+      <div className="cc-regex-add">
+        <input
+          type="text"
+          value={props.newValue}
+          placeholder="Example: (^|/)secrets?\\."
+          onChange={(event) => props.onNewValueChange(event.target.value)}
+        />
+        <button className="cc-secondary" type="button" onClick={props.onAdd} disabled={!canAdd}>
+          Add
+        </button>
+      </div>
+
+      {trimmed.length > 0 && !isValidRegex(trimmed) ? (
+        <p className="cc-input-warning">Invalid regex. Please fix before adding.</p>
+      ) : null}
+
+      {props.value.length === 0 ? (
+        <p className="cc-muted">No extra ignored paths.</p>
+      ) : (
+        <ul className="cc-regex-list">
+          {props.value.map((entry, index) => (
+            <li key={`${entry}-${index}`} className="cc-regex-item">
+              <code>{entry}</code>
+              <button className="cc-secondary" type="button" onClick={() => props.onRemove(index)}>
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {invalidEntries.length > 0 ? (
+        <p className="cc-input-warning">
+          Invalid saved regex entries: {invalidEntries.map((item) => item.entry).join(", ")}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function post(message: SidebarMessage): void {
   vscode.postMessage(message);
 }
@@ -287,6 +376,15 @@ function updateNumber(
 
 function formatNumber(value: number): string {
   return Number.isFinite(value) ? value.toLocaleString() : "0";
+}
+
+function isValidRegex(pattern: string): boolean {
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 interface SeriesPoint {

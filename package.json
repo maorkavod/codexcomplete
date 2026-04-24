@@ -2,7 +2,7 @@
   "name": "codexcomplete",
   "displayName": "CodexComplete",
   "description": "Copilot-style inline autocomplete powered by OpenAI Codex profiles.",
-  "version": "0.0.8",
+  "version": "0.0.9",
   "publisher": "MaorKavod",
   "license": "MIT",
   "icon": "media/marketplace-icon.png",
@@ -124,6 +124,16 @@
           "minimum": 1,
           "maximum": 5000000,
           "markdownDescription": "Maximum total tokens allowed per local calendar day. Set null for no limit."
+        },
+        "codexComplete.ignorePathRegexes": {
+          "type": "array",
+          "default": [
+            "env"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "markdownDescription": "Additional regex patterns for file paths to ignore for completion requests. Matching is done against the full file path."
         }
       }
     }

@@ -112,6 +112,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     await cfg.update("maxContextChars", normalized.maxContextChars, vscode.ConfigurationTarget.Global);
     await cfg.update("enableInline", normalized.enableInline, vscode.ConfigurationTarget.Global);
     await cfg.update("dailyTokenLimit", normalized.dailyTokenLimit, vscode.ConfigurationTarget.Global);
+    await cfg.update("ignorePathRegexes", normalized.ignorePathRegexes, vscode.ConfigurationTarget.Global);
   }
 
   private async postState(): Promise<void> {
@@ -225,7 +226,8 @@ function normalizeConfig(config: ExtensionConfig): ExtensionConfig {
     debounceMs: clamp(config.debounceMs, 0, 2000, 120),
     maxContextChars: clamp(config.maxContextChars, 500, 20000, 6000),
     enableInline: Boolean(config.enableInline),
-    dailyTokenLimit: clampNullable(config.dailyTokenLimit, 1, 5_000_000)
+    dailyTokenLimit: clampNullable(config.dailyTokenLimit, 1, 5_000_000),
+    ignorePathRegexes: sanitizeStringArray(config.ignorePathRegexes)
   };
 }
 
@@ -244,6 +246,16 @@ function clampNullable(value: number | null | undefined, min: number, max: numbe
     return null;
   }
   return Math.max(min, Math.min(max, Math.floor(value)));
+}
+
+function sanitizeStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((item) => (typeof item === "string" ? item.trim() : ""))
+    .filter((item) => item.length > 0);
 }
 
 function isSidebarMessage(value: unknown): value is SidebarMessage {

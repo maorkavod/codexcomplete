@@ -9,6 +9,7 @@ export interface ExtensionConfig {
   maxContextChars: number;
   enableInline: boolean;
   dailyTokenLimit: number | null;
+  ignorePathRegexes: string[];
 }
 
 export interface CompletionContext {

@@ -189,6 +189,12 @@ input:focus {
   font-size: 12px;
 }
 
+.cc-primary:disabled,
+.cc-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .cc-primary {
   background: linear-gradient(120deg, rgba(61, 122, 255, 0.92), rgba(122, 70, 240, 0.92));
 }
@@ -268,6 +274,71 @@ input:focus {
 
 .cc-toggle.on span {
   transform: translateX(20px);
+}
+
+.cc-regex-editor {
+  margin-top: 12px;
+  border: 1px solid rgba(92, 120, 191, 0.35);
+  border-radius: 11px;
+  padding: 10px;
+  background: rgba(13, 27, 59, 0.6);
+}
+
+.cc-regex-head h3 {
+  margin: 0;
+  font-size: 13px;
+  color: #dbe7ff;
+}
+
+.cc-regex-head small {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: rgba(174, 196, 247, 0.82);
+}
+
+.cc-regex-add {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.cc-regex-add .cc-secondary {
+  min-width: 70px;
+}
+
+.cc-regex-list {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.cc-regex-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.cc-regex-item code {
+  border-radius: 8px;
+  border: 1px solid rgba(93, 120, 191, 0.35);
+  background: rgba(8, 20, 50, 0.85);
+  padding: 6px 8px;
+  color: #dce7ff;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cc-input-warning {
+  margin: 8px 0 0;
+  color: #ffd37f;
+  font-size: 11px;
 }
 
 .cc-card-head {
