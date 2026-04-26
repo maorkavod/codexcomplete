@@ -2,7 +2,7 @@
   "name": "codexcomplete",
   "displayName": "CodexComplete",
   "description": "Copilot-style inline autocomplete powered by OpenAI Codex profiles.",
-  "version": "0.0.11",
+  "version": "0.0.14",
   "publisher": "MaorKavod",
   "license": "MIT",
   "icon": "media/marketplace-icon.png",
@@ -115,7 +115,7 @@
         },
         "codexComplete.maxContextChars": {
           "type": "number",
-          "default": 6000,
+          "default": 9000,
           "minimum": 500,
           "maximum": 20000,
           "markdownDescription": "Maximum combined prefix/suffix characters to send for context."
@@ -124,6 +124,11 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Enable inline ghost-text autocomplete suggestions."
+        },
+        "codexComplete.includeLeadingLogicComment": {
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "When enabled, completions must start with a comment line that briefly explains the logic."
         },
         "codexComplete.dailyTokenLimit": {
           "type": [
@@ -150,6 +155,7 @@
   },
   "scripts": {
     "compile": "npm run build:webview && tsc -p ./",
+    "test:pipeline": "npm run compile && node --test out/aiResponsePipeline.spec.js",
     "watch": "npm run build:webview && tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "build:webview": "node ./scripts/build-webview.mjs"

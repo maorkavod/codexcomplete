@@ -8,6 +8,7 @@ export interface ExtensionConfig {
   debounceMs: number;
   maxContextChars: number;
   enableInline: boolean;
+  includeLeadingLogicComment: boolean;
   dailyTokenLimit: number | null;
   ignorePathRegexes: string[];
 }
@@ -17,6 +18,10 @@ export interface CompletionContext {
   fileName: string;
   prefix: string;
   suffix: string;
+  cursorLinePrefix: string;
+  cursorLineSuffix: string;
+  recentContext: string;
+  upcomingContext: string;
   selectedText?: string;
 }
 
@@ -25,6 +30,7 @@ export interface CompletionRequest {
   model: string;
   timeoutMs: number;
   mode: CompletionMode;
+  includeLeadingLogicComment: boolean;
   context: CompletionContext;
 }
 

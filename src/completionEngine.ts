@@ -26,6 +26,7 @@ export class CompletionEngine {
   private readonly logger: Logger;
 
   private cache = new Map<string, { value: string; ts: number }>();
+  private recentAcceptedByDocument = new Map<string, { text: string; ts: number }>();
   private requestNonce = 0;
   private usageStats: UsageStats;
 
@@ -145,6 +146,7 @@ export class CompletionEngine {
         model: config.model,
         timeoutMs: config.requestTimeoutMs,
         mode: params.mode,
+        includeLeadingLogicComment: config.includeLeadingLogicComment,
         context
       },
       params.token
@@ -169,15 +171,29 @@ export class CompletionEngine {
     const diagnostics = this.diag(config.model, start, response.error);
     this.diagnosticsPanel.update(diagnostics);
 
-    if (response.text) {
-      this.cache.set(cacheKey, { value: response.text, ts: Date.now() });
-      this.logger.debug(`Completion text received: length=${response.text.length}`);
+    let finalText = response.text;
+
+    if (finalText) {
+      const documentKey = params.document.uri.toString();
+      if (shouldSuppressRepeatedAcceptance(finalText, context.prefix, this.recentAcceptedByDocument.get(documentKey))) {
+        this.logger.debug("Completion suppressed due to repeated-acceptance protection.");
+        finalText = null;
+      }
+    }
+
+    if (finalText) {
+      this.cache.set(cacheKey, { value: finalText, ts: Date.now() });
+      this.recentAcceptedByDocument.set(params.document.uri.toString(), {
+        text: normalizeForComparison(finalText),
+        ts: Date.now(),
+      });
+      this.logger.debug(`Completion text received: length=${finalText.length}`);
     } else {
       this.logger.debug("Completion returned empty text.");
     }
 
     return {
-      text: response.text,
+      text: finalText,
       diagnostics
     };
   }
@@ -212,6 +228,38 @@ export class CompletionEngine {
       usage: this.getUsageStats()
     };
   }
+}
+
+function shouldSuppressRepeatedAcceptance(
+  text: string,
+  prefix: string,
+  recent: { text: string; ts: number } | undefined
+): boolean {
+  if (!recent) {
+    return false;
+  }
+
+  const now = Date.now();
+  if (now - recent.ts > 15000) {
+    return false;
+  }
+
+  const normalized = normalizeForComparison(text);
+  if (!normalized || normalized !== recent.text) {
+    return false;
+  }
+
+  const prefixTail = normalizeForComparison(prefix.slice(-800));
+  return prefixTail.includes(normalized);
+}
+
+function normalizeForComparison(value: string): string {
+  return value
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+    .join("\n");
 }
 
 async function wait(ms: number, token: vscode.CancellationToken): Promise<void> {

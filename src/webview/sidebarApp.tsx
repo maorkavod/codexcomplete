@@ -12,6 +12,7 @@ interface ExtensionConfig {
   debounceMs: number;
   maxContextChars: number;
   enableInline: boolean;
+  includeLeadingLogicComment: boolean;
   dailyTokenLimit: number | null;
   ignorePathRegexes: string[];
 }
@@ -64,8 +65,9 @@ const emptyState: SidebarState = {
     model: "gpt-5.3-codex",
     requestTimeoutMs: 15000,
     debounceMs: 120,
-    maxContextChars: 6000,
+    maxContextChars: 9000,
     enableInline: true,
+    includeLeadingLogicComment: true,
     dailyTokenLimit: null,
     ignorePathRegexes: ["env"]
   },
@@ -214,6 +216,22 @@ function App(): React.JSX.Element {
                 type="button"
                 onClick={() => setDraft((current) => ({ ...current, enableInline: !current.enableInline }))}
                 aria-pressed={draft.enableInline}
+              >
+                <span />
+              </button>
+            </div>
+            <div className="cc-toggle-row">
+              <span>Add Comments</span>
+              <button
+                className={draft.includeLeadingLogicComment ? "cc-toggle on" : "cc-toggle"}
+                type="button"
+                onClick={() =>
+                  setDraft((current) => ({
+                    ...current,
+                    includeLeadingLogicComment: !current.includeLeadingLogicComment
+                  }))
+                }
+                aria-pressed={draft.includeLeadingLogicComment}
               >
                 <span />
               </button>

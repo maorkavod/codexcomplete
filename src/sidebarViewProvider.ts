@@ -123,6 +123,11 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     await cfg.update("debounceMs", normalized.debounceMs, vscode.ConfigurationTarget.Global);
     await cfg.update("maxContextChars", normalized.maxContextChars, vscode.ConfigurationTarget.Global);
     await cfg.update("enableInline", normalized.enableInline, vscode.ConfigurationTarget.Global);
+    await cfg.update(
+      "includeLeadingLogicComment",
+      normalized.includeLeadingLogicComment,
+      vscode.ConfigurationTarget.Global
+    );
     await cfg.update("dailyTokenLimit", normalized.dailyTokenLimit, vscode.ConfigurationTarget.Global);
     await cfg.update("ignorePathRegexes", normalized.ignorePathRegexes, vscode.ConfigurationTarget.Global);
   }
@@ -242,8 +247,9 @@ function normalizeConfig(config: ExtensionConfig): ExtensionConfig {
     model,
     requestTimeoutMs: clamp(config.requestTimeoutMs, 1000, 120000, 15000),
     debounceMs: clamp(config.debounceMs, 0, 2000, 120),
-    maxContextChars: clamp(config.maxContextChars, 500, 20000, 6000),
+    maxContextChars: clamp(config.maxContextChars, 500, 20000, 9000),
     enableInline: Boolean(config.enableInline),
+    includeLeadingLogicComment: config.includeLeadingLogicComment !== false,
     dailyTokenLimit: clampNullable(config.dailyTokenLimit, 1, 5_000_000),
     ignorePathRegexes: sanitizeStringArray(config.ignorePathRegexes)
   };
