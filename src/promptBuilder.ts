@@ -13,7 +13,9 @@ export class PromptBuilder {
       "Respect existing style and conventions from the surrounding code.",
       "Keep output concise for inline insertion, but not at the cost of clarity or correctness.",
       "Do not over-engineer: pick the simplest solution that is still production-grade.",
-      "Never repeat the given prefix unless needed to complete an unfinished token."
+      "Never repeat the given prefix unless needed to complete an unfinished token.",
+      "Preserve correct indentation and line breaks for the target language.",
+      "For Python, always respect block indentation after lines ending with ':'."
     ].join(" ");
   }
 

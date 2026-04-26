@@ -2,7 +2,7 @@
   "name": "codexcomplete",
   "displayName": "CodexComplete",
   "description": "Copilot-style inline autocomplete powered by OpenAI Codex profiles.",
-  "version": "0.0.9",
+  "version": "0.0.11",
   "publisher": "MaorKavod",
   "license": "MIT",
   "icon": "media/marketplace-icon.png",
@@ -46,6 +46,8 @@
     "onCommand:codexComplete.setApiKey",
     "onCommand:codexComplete.completeNow",
     "onCommand:codexComplete.openPanel",
+    "onCommand:codexComplete.openLogs",
+    "onCommand:codexComplete.openLogsTerminal",
     "onView:codexComplete.sidebarView"
   ],
   "contributes": {
@@ -79,6 +81,14 @@
       {
         "command": "codexComplete.openPanel",
         "title": "CodexComplete: Open Diagnostics Panel"
+      },
+      {
+        "command": "codexComplete.openLogs",
+        "title": "CodexComplete: Open Logs"
+      },
+      {
+        "command": "codexComplete.openLogsTerminal",
+        "title": "CodexComplete: Open Logs Terminal"
       }
     ],
     "configuration": {

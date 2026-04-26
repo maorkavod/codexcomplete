@@ -3,6 +3,8 @@ import { API_KEY_SECRET, EXTENSION_NAMESPACE, getConfig } from "./config";
 import { CompletionEngine } from "./completionEngine";
 import { DiagnosticsPanel } from "./diagnosticsPanel";
 import { ExtensionConfig } from "./types";
+import { requestJson } from "./httpClient";
+import { Logger } from "./logger";
 
 const DEFAULT_MODEL = "gpt-5.3-codex";
 const MODEL_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -30,10 +32,12 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly diagnostics: DiagnosticsPanel,
-    private readonly engine: CompletionEngine
+    private readonly engine: CompletionEngine,
+    private readonly logger: Logger
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
+    this.logger.info("Sidebar view resolved.");
     this.view = view;
     this.view.webview.options = {
       enableScripts: true,
@@ -42,9 +46,11 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 
     this.view.webview.onDidReceiveMessage(async (message: unknown) => {
       if (!isSidebarMessage(message)) {
+        this.logger.warn("Sidebar received unknown message payload.");
         return;
       }
 
+      this.logger.debug(`Sidebar message received: type=${message.type}`);
       await this.onMessage(message);
     });
 
@@ -59,6 +65,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
     });
 
     this.view.onDidDispose(() => {
+      this.logger.info("Sidebar view disposed.");
       diagnosticsSub.dispose();
       configSub.dispose();
       this.view = null;
@@ -76,26 +83,31 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
         break;
       case "saveSettings":
         await this.saveSettings(message.payload);
+        this.logger.info("Settings updated from sidebar.");
         vscode.window.showInformationMessage("CodexComplete: settings updated.");
         await this.postState();
         break;
       case "setApiKey":
         await vscode.commands.executeCommand("codexComplete.setApiKey");
+        this.logger.info("Sidebar requested API key update.");
         this.modelCache = null;
         await this.postState();
         break;
       case "clearApiKey":
         await this.context.secrets.delete(API_KEY_SECRET);
+        this.logger.info("API key removed from secret storage.");
         this.modelCache = null;
         vscode.window.showInformationMessage("CodexComplete: API key removed.");
         await this.postState();
         break;
       case "runCompleteNow":
         await vscode.commands.executeCommand("codexComplete.completeNow");
+        this.logger.info("Sidebar triggered manual completion.");
         await this.postState();
         break;
       case "openDiagnostics":
         await vscode.commands.executeCommand("codexComplete.openPanel");
+        this.logger.info("Sidebar opened diagnostics panel.");
         break;
       default:
         break;
@@ -137,6 +149,7 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
 
   private async getModelOptions(apiKey: string | undefined, selectedModel: string): Promise<string[]> {
     if (!apiKey) {
+      this.logger.debug("Skipping model list fetch: API key not set.");
       return withSelectedModel(FALLBACK_MODELS, selectedModel);
     }
 
@@ -146,13 +159,15 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
       this.modelCache.apiKey === apiKey &&
       now - this.modelCache.fetchedAt < MODEL_CACHE_TTL_MS
     ) {
+      this.logger.debug("Using cached model list.");
       return withSelectedModel(this.modelCache.modelOptions, selectedModel);
     }
 
     try {
+      this.logger.debug("Fetching model list from OpenAI /models.");
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 4000);
-      const response = await fetch("https://api.openai.com/v1/models", {
+      const response = await requestJson<OpenAIModelsResponse>("https://api.openai.com/v1/models", {
         method: "GET",
         headers: {
           Authorization: `Bearer ${apiKey}`
@@ -162,10 +177,11 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
       clearTimeout(timeout);
 
       if (!response.ok) {
+        this.logger.warn(`OpenAI /models returned non-2xx status=${response.status}. Using fallback models.`);
         return withSelectedModel(FALLBACK_MODELS, selectedModel);
       }
 
-      const body = (await response.json()) as OpenAIModelsResponse;
+      const body = response.data ?? {};
       const dynamicModels = (body.data ?? [])
         .map((item) => item.id)
         .filter((id): id is string => typeof id === "string" && id.trim().length > 0)
@@ -177,9 +193,11 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
         modelOptions: deduped,
         fetchedAt: now
       };
+      this.logger.info(`Model list fetched successfully: count=${deduped.length}`);
 
       return withSelectedModel(deduped, selectedModel);
     } catch {
+      this.logger.warn("Model list fetch failed; using fallback models.");
       return withSelectedModel(FALLBACK_MODELS, selectedModel);
     }
   }

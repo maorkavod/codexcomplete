@@ -1,6 +1,9 @@
 import * as vscode from "vscode";
 import { CompletionRequest, OpenAIResponseBody, TokenUsage } from "./types";
 import { PromptBuilder } from "./promptBuilder";
+import { requestJson } from "./httpClient";
+import { Logger } from "./logger";
+import { sanitizeAndFormatCompletion } from "./completionFormatter";
 
 interface OpenAICompletionResponse {
   text: string | null;
@@ -10,6 +13,11 @@ interface OpenAICompletionResponse {
 
 export class OpenAIClient {
   private readonly promptBuilder = new PromptBuilder();
+  private readonly logger: Logger;
+
+  constructor(logger: Logger) {
+    this.logger = logger;
+  }
 
   async complete(
     request: CompletionRequest,
@@ -26,13 +34,16 @@ export class OpenAIClient {
     );
 
     try {
-      const response = await fetch("https://api.openai.com/v1/responses", {
+      this.logger.debug(
+        `OpenAI /responses request starting: model=${request.model} mode=${request.mode} timeoutMs=${request.timeoutMs}`
+      );
+      const response = await requestJson<OpenAIResponseBody>("https://api.openai.com/v1/responses", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${request.apiKey}`,
+          Authorization: `Bearer ${request.apiKey}`
         },
-        body: JSON.stringify({
+        body: {
           model: request.model,
           temperature: 0.15,
           max_output_tokens: request.mode === "inline" ? 96 : 220,
@@ -59,14 +70,15 @@ export class OpenAIClient {
               ],
             },
           ],
-        }),
-        signal: controller.signal,
+        },
+        signal: controller.signal
       });
 
-      const body = (await response.json()) as OpenAIResponseBody;
+      const body = response.data ?? {};
       const usage = parseUsage(body);
 
       if (!response.ok) {
+        this.logger.warn(`OpenAI /responses returned non-2xx status=${response.status}`);
         return {
           text: null,
           error:
@@ -77,9 +89,17 @@ export class OpenAIClient {
       }
 
       const output = extractOutputText(body);
-      return { text: sanitizeCompletion(output), error: null, usage };
+      this.logger.debug(
+        `OpenAI /responses success: status=${response.status} outputChars=${output.length} totalTokens=${usage.totalTokens}`
+      );
+      return {
+        text: sanitizeAndFormatCompletion(output, request.context),
+        error: null,
+        usage
+      };
     } catch (error) {
       if (didTimeout) {
+        this.logger.warn(`OpenAI /responses timeout after ${request.timeoutMs}ms`);
         return {
           text: null,
           error: `Request timed out after ${request.timeoutMs} ms`,
@@ -87,8 +107,10 @@ export class OpenAIClient {
         };
       }
       if (controller.signal.aborted || token.isCancellationRequested) {
+        this.logger.debug("OpenAI /responses aborted.");
         return { text: null, error: "Request canceled", usage: emptyUsage() };
       }
+      this.logger.error("OpenAI /responses network error", error);
       return {
         text: null,
         error:
@@ -116,15 +138,7 @@ function extractOutputText(body: OpenAIResponseBody): string {
     }
   }
 
-  return collected.join("").trim();
-}
-
-function sanitizeCompletion(text: string): string | null {
-  const trimmed = text
-    .replace(/^```[a-zA-Z]*\n?/, "")
-    .replace(/```$/, "")
-    .trimEnd();
-  return trimmed.length > 0 ? trimmed : null;
+  return collected.join("");
 }
 
 function parseUsage(body: OpenAIResponseBody): TokenUsage {

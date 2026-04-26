@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { ContextCollector } from "./contextCollector";
 import { OpenAIClient } from "./openaiClient";
 import { DiagnosticsPanel } from "./diagnosticsPanel";
+import { Logger } from "./logger";
 import {
   CompletionMode,
   CompletionResult,
@@ -22,6 +23,7 @@ export class CompletionEngine {
   private readonly getApiKey: () => Promise<string | undefined>;
   private readonly diagnosticsPanel: DiagnosticsPanel;
   private readonly saveUsageStats: (stats: UsageStats) => Promise<void>;
+  private readonly logger: Logger;
 
   private cache = new Map<string, { value: string; ts: number }>();
   private requestNonce = 0;
@@ -35,6 +37,7 @@ export class CompletionEngine {
     diagnosticsPanel: DiagnosticsPanel;
     initialUsageStats?: UsageStats;
     saveUsageStats: (stats: UsageStats) => Promise<void>;
+    logger: Logger;
   }) {
     this.client = options.client;
     this.collector = options.collector;
@@ -43,6 +46,7 @@ export class CompletionEngine {
     this.diagnosticsPanel = options.diagnosticsPanel;
     this.usageStats = sanitizeUsageStats(options.initialUsageStats);
     this.saveUsageStats = options.saveUsageStats;
+    this.logger = options.logger;
   }
 
   getUsageStats(): UsageStats {
@@ -61,8 +65,12 @@ export class CompletionEngine {
   }): Promise<CompletionResult> {
     const config = this.getConfig();
     const start = Date.now();
+    this.logger.debug(
+      `Completion requested: mode=${params.mode} language=${params.document.languageId} model=${config.model}`
+    );
 
     if (shouldIgnoreDocument(params.document, config.ignorePathRegexes)) {
+      this.logger.debug("Completion skipped: document path matched ignore rules.");
       return {
         text: null,
         diagnostics: this.diag(config.model, start, null)
@@ -70,6 +78,7 @@ export class CompletionEngine {
     }
 
     if (params.mode === "inline" && !config.enableInline) {
+      this.logger.debug("Completion skipped: inline completions are disabled in settings.");
       return {
         text: null,
         diagnostics: this.diag(config.model, start, null)
@@ -78,6 +87,7 @@ export class CompletionEngine {
 
     const apiKey = await this.getApiKey();
     if (!apiKey) {
+      this.logger.warn("Completion skipped: missing API key.");
       const diagnostics = this.diag(config.model, start, "Missing API key");
       this.diagnosticsPanel.update(diagnostics);
       return { text: null, diagnostics };
@@ -93,6 +103,7 @@ export class CompletionEngine {
     const cacheKey = buildCacheKey(config.model, params.mode, context.prefix, context.suffix);
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+      this.logger.debug("Completion served from cache.");
       const diagnostics = this.diag(config.model, start, null);
       this.diagnosticsPanel.update(diagnostics);
       return { text: cached.value, diagnostics };
@@ -101,6 +112,7 @@ export class CompletionEngine {
     if (params.mode === "inline") {
       await wait(config.debounceMs, params.token);
       if (params.token.isCancellationRequested) {
+        this.logger.debug("Completion canceled during debounce.");
         const diagnostics = this.diag(config.model, start, "Request canceled");
         this.diagnosticsPanel.update(diagnostics);
         return { text: null, diagnostics };
@@ -110,6 +122,9 @@ export class CompletionEngine {
     if (config.dailyTokenLimit !== null) {
       const usedToday = calculateTodayTokenUsage(this.usageStats.history, new Date());
       if (usedToday >= config.dailyTokenLimit) {
+        this.logger.warn(
+          `Completion blocked by daily token limit: used=${usedToday} limit=${config.dailyTokenLimit}`
+        );
         const diagnostics = this.diag(
           config.model,
           start,
@@ -121,6 +136,9 @@ export class CompletionEngine {
     }
 
     const nonce = ++this.requestNonce;
+    this.logger.info(
+      `Sending completion request: mode=${params.mode} model=${config.model} prefixChars=${context.prefix.length} suffixChars=${context.suffix.length}`
+    );
     const response = await this.client.complete(
       {
         apiKey,
@@ -133,18 +151,29 @@ export class CompletionEngine {
     );
 
     if (params.token.isCancellationRequested || nonce !== this.requestNonce) {
+      this.logger.debug("Completion canceled after request start.");
       const diagnostics = this.diag(config.model, start, "Request canceled");
       this.diagnosticsPanel.update(diagnostics);
       return { text: null, diagnostics };
     }
 
     this.consumeUsage(response.usage);
+    if (response.error) {
+      this.logger.warn(`Completion request failed: ${response.error}`);
+    } else {
+      this.logger.info(
+        `Completion request finished: totalTokens=${response.usage.totalTokens} latencyMs=${Date.now() - start}`
+      );
+    }
 
     const diagnostics = this.diag(config.model, start, response.error);
     this.diagnosticsPanel.update(diagnostics);
 
     if (response.text) {
       this.cache.set(cacheKey, { value: response.text, ts: Date.now() });
+      this.logger.debug(`Completion text received: length=${response.text.length}`);
+    } else {
+      this.logger.debug("Completion returned empty text.");
     }
 
     return {
