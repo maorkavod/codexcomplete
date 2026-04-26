@@ -11,6 +11,10 @@ interface ExtensionConfig {
   requestTimeoutMs: number;
   debounceMs: number;
   maxContextChars: number;
+  indentMode: "editor" | "language" | "smart";
+  inlineMaxLines: number;
+  inlineMaxChars: number;
+  strictInlineMode: boolean;
   enableInline: boolean;
   includeLeadingLogicComment: boolean;
   dailyTokenLimit: number | null;
@@ -28,6 +32,10 @@ interface UsageStats {
   lastInputTokens: number;
   lastOutputTokens: number;
   lastTotalTokens: number;
+  suggestionsShown?: number;
+  nullResponses?: number;
+  timeoutResponses?: number;
+  indentCorrections?: number;
   history: UsagePoint[];
 }
 
@@ -66,8 +74,12 @@ const emptyState: SidebarState = {
     requestTimeoutMs: 15000,
     debounceMs: 120,
     maxContextChars: 9000,
+    indentMode: "smart",
+    inlineMaxLines: 24,
+    inlineMaxChars: 1200,
+    strictInlineMode: false,
     enableInline: true,
-    includeLeadingLogicComment: true,
+    includeLeadingLogicComment: false,
     dailyTokenLimit: null,
     ignorePathRegexes: ["env"]
   },
@@ -83,6 +95,10 @@ const emptyState: SidebarState = {
     lastInputTokens: 0,
     lastOutputTokens: 0,
     lastTotalTokens: 0,
+    suggestionsShown: 0,
+    nullResponses: 0,
+    timeoutResponses: 0,
+    indentCorrections: 0,
     history: []
   },
   modelOptions: ["gpt-5.3-codex"]
@@ -102,8 +118,15 @@ function App(): React.JSX.Element {
       }
 
       const nextState = message.payload as SidebarState;
-      setState(nextState);
-      setDraft(nextState.settings);
+      const normalizedSettings = normalizeSettings(nextState.settings);
+      const normalizedDiagnostics = normalizeDiagnostics(nextState.diagnostics);
+
+      setState({
+        ...nextState,
+        settings: normalizedSettings,
+        diagnostics: normalizedDiagnostics
+      });
+      setDraft(normalizedSettings);
       setNewIgnoreRegex("");
     };
 
@@ -173,6 +196,9 @@ function App(): React.JSX.Element {
 
         <section className="cc-card">
           <h2>Settings</h2>
+          <p className="cc-muted">Tune inline behavior and safety limits.</p>
+
+          <h3 className="cc-subheading">Core Runtime</h3>
           <div className="cc-grid">
             <label>
               <span>Request Timeout (ms)</span>
@@ -209,6 +235,44 @@ function App(): React.JSX.Element {
                 }}
               />
             </label>
+          </div>
+
+          <h3 className="cc-subheading">Inline Completion</h3>
+          <div className="cc-grid">
+            <label>
+              <span>Indent Mode</span>
+              <select
+                value={draft.indentMode}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    indentMode: event.target.value as ExtensionConfig["indentMode"]
+                  }))
+                }
+              >
+                <option value="smart">Smart (recommended)</option>
+                <option value="editor">Editor Settings</option>
+                <option value="language">Language Rules</option>
+              </select>
+            </label>
+            <label>
+              <span>Inline Max Lines</span>
+              <input
+                type="number"
+                min={1}
+                value={draft.inlineMaxLines}
+                onChange={(event) => updateNumber(event.target.value, "inlineMaxLines", setDraft)}
+              />
+            </label>
+            <label>
+              <span>Inline Max Chars</span>
+              <input
+                type="number"
+                min={1}
+                value={draft.inlineMaxChars}
+                onChange={(event) => updateNumber(event.target.value, "inlineMaxChars", setDraft)}
+              />
+            </label>
             <div className="cc-toggle-row">
               <span>Enable Inline</span>
               <button
@@ -216,6 +280,17 @@ function App(): React.JSX.Element {
                 type="button"
                 onClick={() => setDraft((current) => ({ ...current, enableInline: !current.enableInline }))}
                 aria-pressed={draft.enableInline}
+              >
+                <span />
+              </button>
+            </div>
+            <div className="cc-toggle-row">
+              <span>Strict Inline Mode</span>
+              <button
+                className={draft.strictInlineMode ? "cc-toggle on" : "cc-toggle"}
+                type="button"
+                onClick={() => setDraft((current) => ({ ...current, strictInlineMode: !current.strictInlineMode }))}
+                aria-pressed={draft.strictInlineMode}
               >
                 <span />
               </button>
@@ -293,6 +368,25 @@ function App(): React.JSX.Element {
             <strong>{formatNumber(sumSeries(requestSeries))}</strong>
             <small>{state.diagnostics.lastError ? `Error: ${state.diagnostics.lastError}` : "No errors"}</small>
             <LineChart points={requestSeries} />
+          </div>
+
+          <div className="cc-mini-metrics">
+            <div className="cc-mini-metric">
+              <p>Suggestions</p>
+              <strong>{formatNumber(state.usage.suggestionsShown ?? 0)}</strong>
+            </div>
+            <div className="cc-mini-metric">
+              <p>Null Responses</p>
+              <strong>{formatNumber(state.usage.nullResponses ?? 0)}</strong>
+            </div>
+            <div className="cc-mini-metric">
+              <p>Timeouts</p>
+              <strong>{formatNumber(state.usage.timeoutResponses ?? 0)}</strong>
+            </div>
+            <div className="cc-mini-metric">
+              <p>Indent Fixes</p>
+              <strong>{formatNumber(state.usage.indentCorrections ?? 0)}</strong>
+            </div>
           </div>
 
           <div className="cc-footer-row">
@@ -382,7 +476,7 @@ function post(message: SidebarMessage): void {
 
 function updateNumber(
   value: string,
-  key: "requestTimeoutMs" | "debounceMs" | "maxContextChars",
+  key: "requestTimeoutMs" | "debounceMs" | "maxContextChars" | "inlineMaxLines" | "inlineMaxChars",
   setDraft: React.Dispatch<React.SetStateAction<ExtensionConfig>>
 ): void {
   const next = Number(value);
@@ -403,6 +497,39 @@ function isValidRegex(pattern: string): boolean {
   } catch {
     return false;
   }
+}
+
+function normalizeSettings(settings: Partial<ExtensionConfig> | undefined): ExtensionConfig {
+  const base = emptyState.settings;
+  const inlineMaxLines = toSafeNumber(settings?.inlineMaxLines);
+  const inlineMaxChars = toSafeNumber(settings?.inlineMaxChars);
+
+  return {
+    ...base,
+    ...(settings ?? {}),
+    includeLeadingLogicComment: settings?.includeLeadingLogicComment ?? base.includeLeadingLogicComment,
+    indentMode: settings?.indentMode ?? base.indentMode,
+    inlineMaxLines: inlineMaxLines > 0 ? inlineMaxLines : base.inlineMaxLines,
+    inlineMaxChars: inlineMaxChars > 0 ? inlineMaxChars : base.inlineMaxChars,
+    strictInlineMode: settings?.strictInlineMode ?? base.strictInlineMode
+  };
+}
+
+function normalizeDiagnostics(diagnostics: Partial<DiagnosticsState> | undefined): DiagnosticsState {
+  const base = emptyState.diagnostics;
+  return {
+    ...base,
+    ...(diagnostics ?? {}),
+    model: diagnostics?.model ?? base.model,
+    latencyMs: toSafeNumber(diagnostics?.latencyMs),
+    lastError: diagnostics?.lastError ?? base.lastError,
+    lastUpdated: diagnostics?.lastUpdated ?? base.lastUpdated
+  };
+}
+
+function toSafeNumber(value: unknown): number {
+  const num = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(num) ? num : 0;
 }
 
 interface SeriesPoint {

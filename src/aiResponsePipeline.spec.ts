@@ -406,3 +406,76 @@ test("python: rejects malformed mixed prose and broken conditional expression", 
   });
   assert.equal(result, null, "malformed mixed prose/code candidate should be rejected");
 });
+
+test("python: normalizes mixed tabs/spaces into stable branch indentation", () => {
+  const context = makeContext({
+    languageId: "python",
+    fileName: "quota.py",
+    prefix: "def should_notify(target_user):\n    ",
+    cursorLinePrefix: "    ",
+    cursorLineSuffix: "",
+    suffix: "\n",
+  });
+
+  const raw =
+    "if target_user.is_over_quota():\n" +
+    "\treturn True\n" +
+    "\telif target_user.is_warned:\n" +
+    "    \treturn False";
+
+  const result = processAIResponseCandidate(raw, context, "inline");
+  assert.ok(result, "candidate should survive processing");
+  assert.ok(
+    !result.text.includes("\t"),
+    "pipeline should normalize indentation and avoid raw tab indentation artifacts"
+  );
+  assert.match(
+    result.text,
+    /\n\s{4}elif target_user\.is_warned:/,
+    "branch keyword should remain aligned with the first control line"
+  );
+});
+
+test("inline limits: rejects candidates over inline line budget", () => {
+  const context = makeContext({
+    languageId: "python",
+    fileName: "budget.py",
+    prefix: "def budget_guard():\n    ",
+    cursorLinePrefix: "    ",
+    cursorLineSuffix: "",
+    suffix: "\n",
+  });
+
+  const raw = [
+    "v1 = 1",
+    "v2 = 2",
+    "v3 = 3",
+    "v4 = 4",
+    "v5 = 5",
+    "v6 = 6",
+    "v7 = 7",
+    "v8 = 8",
+    "v9 = 9",
+  ].join("\n");
+
+  const result = processAIResponseCandidate(raw, context, "inline");
+  assert.equal(result, null, "inline candidate with more than eight lines should be rejected");
+});
+
+test("inline limits: rejects candidates over inline character budget", () => {
+  const context = makeContext({
+    languageId: "python",
+    fileName: "budget.py",
+    prefix: "def budget_guard():\n    ",
+    cursorLinePrefix: "    ",
+    cursorLineSuffix: "",
+    suffix: "\n",
+  });
+
+  const longIdentifier = "very_long_signal_name_".repeat(40);
+  const raw = `value = "${longIdentifier}"`;
+  assert.ok(raw.length > 700, "fixture should exceed inline character limit");
+
+  const result = processAIResponseCandidate(raw, context, "inline");
+  assert.equal(result, null, "inline candidate over character limit should be rejected");
+});

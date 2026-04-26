@@ -21,7 +21,7 @@ body {
 
 #root {
   min-height: 100vh;
-  padding: 10px 8px;
+  padding: 12px 10px;
 }
 
 .cc-shell {
@@ -71,14 +71,14 @@ body {
     linear-gradient(180deg, rgba(8, 19, 48, 0.98), rgba(4, 10, 27, 0.95)),
     radial-gradient(120% 80% at 100% 0, rgba(49, 143, 255, 0.18), transparent 50%);
   box-shadow: inset 0 1px 0 rgba(161, 188, 255, 0.08), 0 0 24px rgba(50, 74, 190, 0.24);
-  padding: 14px;
+  padding: 16px;
 }
 
 .cc-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .cc-brand {
@@ -102,8 +102,8 @@ body {
   border: 1px solid rgba(96, 125, 201, 0.22);
   border-radius: 14px;
   background: linear-gradient(180deg, rgba(9, 23, 56, 0.92), rgba(6, 15, 38, 0.9));
-  padding: 12px;
-  margin-bottom: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
   box-shadow: inset 0 1px 0 rgba(138, 167, 255, 0.08);
 }
 
@@ -119,6 +119,15 @@ body {
 .cc-card h2 {
   font-size: 15px;
   font-weight: 750;
+}
+
+.cc-subheading {
+  margin: 14px 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(170, 192, 245, 0.9);
 }
 
 .cc-select-wrap {
@@ -150,6 +159,15 @@ input {
   font-size: 14px;
 }
 
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  margin: 0;
+}
+
 select:focus,
 input:focus {
   border-color: rgba(103, 159, 255, 0.95);
@@ -163,12 +181,13 @@ input:focus {
 .cc-muted {
   margin: 8px 0 0;
   font-size: 11px;
+  line-height: 1.35;
   color: rgba(174, 196, 247, 0.75);
 }
 
 .cc-inline-actions,
 .cc-actions {
-  margin-top: 10px;
+  margin-top: 12px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
@@ -225,7 +244,8 @@ input:focus {
 
 .cc-grid {
   display: grid;
-  gap: 8px;
+  gap: 10px;
+  margin-top: 8px;
 }
 
 .cc-grid label span,
@@ -242,7 +262,7 @@ input:focus {
   justify-content: space-between;
   border: 1px solid rgba(92, 120, 191, 0.35);
   border-radius: 11px;
-  padding: 8px 10px;
+  padding: 10px;
   background: rgba(13, 27, 59, 0.75);
 }
 
@@ -277,7 +297,7 @@ input:focus {
 }
 
 .cc-regex-editor {
-  margin-top: 12px;
+  margin-top: 14px;
   border: 1px solid rgba(92, 120, 191, 0.35);
   border-radius: 11px;
   padding: 10px;
@@ -345,7 +365,7 @@ input:focus {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .cc-card-head select {
@@ -357,7 +377,7 @@ input:focus {
 .cc-metric-card {
   border: 1px solid rgba(95, 122, 196, 0.3);
   border-radius: 12px;
-  padding: 10px;
+  padding: 12px;
   background: linear-gradient(180deg, rgba(11, 24, 56, 0.92), rgba(8, 17, 38, 0.95));
   margin-bottom: 10px;
 }
@@ -371,7 +391,7 @@ input:focus {
 .cc-metric-card strong {
   display: block;
   margin-top: 4px;
-  font-size: 34px;
+  font-size: 30px;
   line-height: 1;
   letter-spacing: -0.02em;
   color: #f1f5ff;
@@ -450,24 +470,77 @@ input:focus {
   font-size: 11px;
 }
 
-@media (max-width: 430px) {
+.cc-mini-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.cc-mini-metric {
+  border: 1px solid rgba(95, 122, 196, 0.24);
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: rgba(10, 20, 47, 0.78);
+}
+
+.cc-mini-metric p {
+  margin: 0;
+  font-size: 11px;
+  color: #a9c0f1;
+}
+
+.cc-mini-metric strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 18px;
+  line-height: 1.1;
+  color: #e9f1ff;
+}
+
+@media (max-width: 620px) {
   #root {
     padding: 8px 6px;
   }
 
   .cc-shell {
     grid-template-columns: 1fr;
+    gap: 8px;
   }
 
   .cc-nav {
     flex-direction: row;
     justify-content: center;
+    gap: 8px;
     padding: 8px;
+    border-radius: 14px;
+  }
+
+  .cc-main {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .cc-card {
+    padding: 12px;
+    border-radius: 12px;
   }
 
   .cc-inline-actions,
-  .cc-actions {
+  .cc-actions,
+  .cc-regex-add {
     grid-template-columns: 1fr;
+  }
+
+  .cc-footer-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (max-width: 430px) {
+  .cc-brand {
+    font-size: 11px;
   }
 
   .cc-card-head {
@@ -478,5 +551,13 @@ input:focus {
 
   .cc-card-head select {
     width: 100%;
+  }
+
+  .cc-mini-metrics {
+    grid-template-columns: 1fr;
+  }
+
+  .cc-metric-card strong {
+    font-size: 25px;
   }
 }

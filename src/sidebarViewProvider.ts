@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { API_KEY_SECRET, EXTENSION_NAMESPACE, getConfig } from "./config";
 import { CompletionEngine } from "./completionEngine";
 import { DiagnosticsPanel } from "./diagnosticsPanel";
-import { ExtensionConfig } from "./types";
+import { ExtensionConfig, IndentMode } from "./types";
 import { requestJson } from "./httpClient";
 import { Logger } from "./logger";
 
@@ -128,6 +128,10 @@ export class SidebarViewProvider implements vscode.WebviewViewProvider {
       normalized.includeLeadingLogicComment,
       vscode.ConfigurationTarget.Global
     );
+    await cfg.update("indentMode", normalized.indentMode, vscode.ConfigurationTarget.Global);
+    await cfg.update("inlineMaxLines", normalized.inlineMaxLines, vscode.ConfigurationTarget.Global);
+    await cfg.update("inlineMaxChars", normalized.inlineMaxChars, vscode.ConfigurationTarget.Global);
+    await cfg.update("strictInlineMode", normalized.strictInlineMode, vscode.ConfigurationTarget.Global);
     await cfg.update("dailyTokenLimit", normalized.dailyTokenLimit, vscode.ConfigurationTarget.Global);
     await cfg.update("ignorePathRegexes", normalized.ignorePathRegexes, vscode.ConfigurationTarget.Global);
   }
@@ -249,9 +253,13 @@ function normalizeConfig(config: ExtensionConfig): ExtensionConfig {
     debounceMs: clamp(config.debounceMs, 0, 2000, 120),
     maxContextChars: clamp(config.maxContextChars, 500, 20000, 9000),
     enableInline: Boolean(config.enableInline),
-    includeLeadingLogicComment: config.includeLeadingLogicComment !== false,
+    includeLeadingLogicComment: Boolean(config.includeLeadingLogicComment),
+    indentMode: sanitizeIndentMode(config.indentMode),
+    inlineMaxLines: clamp(config.inlineMaxLines ?? 8, 1, 64, 8),
+    inlineMaxChars: clamp(config.inlineMaxChars ?? 700, 32, 4000, 700),
+    strictInlineMode: config.strictInlineMode === true,
     dailyTokenLimit: clampNullable(config.dailyTokenLimit, 1, 5_000_000),
-    ignorePathRegexes: sanitizeStringArray(config.ignorePathRegexes)
+    ignorePathRegexes: sanitizeRegexArray(config.ignorePathRegexes)
   };
 }
 
@@ -282,13 +290,46 @@ function sanitizeStringArray(value: unknown): string[] {
     .filter((item) => item.length > 0);
 }
 
+function sanitizeRegexArray(value: unknown): string[] {
+  return sanitizeStringArray(value).filter((pattern) => {
+    try {
+      new RegExp(pattern);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+}
+
+function sanitizeIndentMode(value: unknown): IndentMode {
+  if (value === "editor" || value === "language" || value === "smart") {
+    return value;
+  }
+  return "smart";
+}
+
 function isSidebarMessage(value: unknown): value is SidebarMessage {
   if (!value || typeof value !== "object" || !("type" in value)) {
     return false;
   }
 
-  const message = value as { type?: unknown };
-  return typeof message.type === "string";
+  const message = value as { type?: unknown; payload?: unknown };
+  if (typeof message.type !== "string") {
+    return false;
+  }
+
+  if (message.type === "saveSettings") {
+    return Boolean(message.payload && typeof message.payload === "object");
+  }
+
+  return (
+    message.type === "ready" ||
+    message.type === "setApiKey" ||
+    message.type === "clearApiKey" ||
+    message.type === "runCompleteNow" ||
+    message.type === "openDiagnostics" ||
+    message.type === "refresh"
+  );
 }
 
 function dedupe(items: string[]): string[] {

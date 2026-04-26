@@ -1,12 +1,14 @@
 import * as vscode from "vscode";
-import { CompletionContext } from "./types";
+import { detectIndentUnitFromText } from "./insertionFormatter";
+import { CompletionContext, EditorIndentation } from "./types";
 
 export class ContextCollector {
   collect(
     document: vscode.TextDocument,
     position: vscode.Position,
     maxContextChars: number,
-    selectedText?: string
+    selectedText?: string,
+    editorOptions?: EditorIndentation
   ): CompletionContext {
     const fullText = document.getText();
     const offset = document.offsetAt(position);
@@ -32,7 +34,10 @@ export class ContextCollector {
       cursorLineSuffix,
       recentContext: collectRecentContext(prefix),
       upcomingContext: collectUpcomingContext(suffix),
-      selectedText
+      selectedText,
+      insertSpaces: editorOptions?.insertSpaces,
+      tabSize: editorOptions?.tabSize,
+      detectedIndentUnit: detectIndentUnitFromText(fullText, document.languageId, editorOptions?.tabSize)
     };
   }
 }

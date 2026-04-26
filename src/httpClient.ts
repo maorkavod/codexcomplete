@@ -5,12 +5,14 @@ export interface JsonRequestOptions {
   headers?: Record<string, string>;
   body?: unknown;
   signal?: AbortSignal;
+  includeRawResponseText?: boolean;
 }
 
 export interface JsonResponse<T> {
   ok: boolean;
   status: number;
   data: T | null;
+  rawText?: string;
 }
 
 export async function requestJson<T>(
@@ -46,10 +48,10 @@ export async function requestJson<T>(
             return;
           }
           settled = true;
-          const rawBody = Buffer.concat(chunks).toString("utf8").trim();
+          const rawBody = Buffer.concat(chunks).toString("utf8");
           let data: T | null = null;
 
-          if (rawBody.length > 0) {
+          if (rawBody.trim().length > 0) {
             try {
               data = JSON.parse(rawBody) as T;
             } catch {
@@ -61,7 +63,8 @@ export async function requestJson<T>(
           resolve({
             ok: status >= 200 && status < 300,
             status,
-            data
+            data,
+            ...(options.includeRawResponseText ? { rawText: rawBody } : {})
           });
         });
       }

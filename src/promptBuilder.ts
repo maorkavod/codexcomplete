@@ -1,7 +1,7 @@
 import { CompletionContext, CompletionMode } from "./types";
 
 export class PromptBuilder {
-  buildSystemPrompt(includeLeadingLogicComment: boolean): string {
+  buildSystemPrompt(includeLeadingLogicComment: boolean, strictInlineMode = false): string {
     return [
       "You are CodexComplete, an elite autocomplete engine.",
       "Return only the code continuation text, no markdown and no explanations.",
@@ -23,6 +23,12 @@ export class PromptBuilder {
       includeLeadingLogicComment
         ? "The first non-empty completion line must be a short comment explaining the added logic."
         : "Do not add explanatory comments unless they are clearly useful.",
+      strictInlineMode
+        ? "Strict inline mode is enabled: continue minimally, avoid speculative edits, never narrate."
+        : "Continue naturally while staying local and precise.",
+      strictInlineMode
+        ? "Hard ban: no prose lines, no markdown fences, no duplicate prefix/suffix echoes."
+        : "Prefer local continuity over broad rewrites.",
       "When unsure, emit fewer lines rather than speculative extra code."
     ].join(" ");
   }
@@ -30,12 +36,20 @@ export class PromptBuilder {
   buildUserPrompt(
     context: CompletionContext,
     mode: CompletionMode,
-    includeLeadingLogicComment: boolean
+    includeLeadingLogicComment: boolean,
+    options?: {
+      strictInlineMode?: boolean;
+      inlineMaxLines?: number;
+      inlineMaxChars?: number;
+    }
   ): string {
     const cursorIndent = leadingWhitespace(context.cursorLinePrefix);
     const lineStart = context.cursorLinePrefix.trim().length === 0;
     const previousNonEmptyLine = getPreviousNonEmptyLine(context.prefix);
     const targetIndentHint = computeTargetIndentHint(context);
+    const strictInlineMode = options?.strictInlineMode === true;
+    const inlineMaxLines = options?.inlineMaxLines ?? 8;
+    const inlineMaxChars = options?.inlineMaxChars ?? 700;
 
     return [
       `Mode: ${mode}`,
@@ -57,8 +71,11 @@ export class PromptBuilder {
         : "- Avoid unnecessary comments.",
       "- If quality is uncertain, output an empty string.",
       mode === "inline"
-        ? "Inline mode rules: prefer 1-4 lines, stay in the same syntactic block, avoid broad continuations."
+        ? `Inline mode rules: prefer 1-4 lines, stay in the same syntactic block, avoid broad continuations. Hard limit ${inlineMaxLines} lines and ${inlineMaxChars} chars.`
         : "Manual mode rules: continue naturally, but preserve local structure and indentation.",
+      strictInlineMode && mode === "inline"
+        ? "Strict inline constraints: output only the immediate continuation; do not add imports, module-level declarations, or explanatory text."
+        : "",
       "Local line before cursor:",
       context.cursorLinePrefix,
       "<CURSOR>",

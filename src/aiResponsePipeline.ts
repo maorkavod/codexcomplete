@@ -7,6 +7,9 @@ export interface ProcessedCandidate {
 
 interface PipelineOptions {
   requireLeadingLogicComment?: boolean;
+  strictInlineMode?: boolean;
+  inlineMaxLines?: number;
+  inlineMaxChars?: number;
 }
 
 export function processAIResponseCandidate(
@@ -45,12 +48,12 @@ export function processAIResponseCandidate(
     return null;
   }
 
-  if (!isCandidateValid(commentNormalized, context, mode)) {
+  if (!isCandidateValid(commentNormalized, context, mode, options)) {
     return null;
   }
 
-  const score = scoreCandidate(commentNormalized, context, mode);
-  const minScore = mode === "inline" ? 0.58 : 0.45;
+  const score = scoreCandidate(commentNormalized, context, mode, options);
+  const minScore = mode === "inline" ? (options?.strictInlineMode ? 0.62 : 0.5) : 0.45;
   if (score < minScore) {
     return null;
   }
@@ -573,17 +576,21 @@ function isCandidateValid(
   text: string,
   context: CompletionContext,
   mode: CompletionMode,
+  options?: PipelineOptions
 ): boolean {
   const normalized = text.replace(/\r\n?/g, "\n");
   const lines = nonEmptyTrimmedLines(normalized);
+  const maxChars = clampPositive(options?.inlineMaxChars, 700);
+  const maxLines = clampPositive(options?.inlineMaxLines, 8);
+  const strictInlineMode = options?.strictInlineMode === true;
 
   if (lines.length === 0) {
     return false;
   }
-  if (mode === "inline" && normalized.length > 700) {
+  if (mode === "inline" && normalized.length > maxChars) {
     return false;
   }
-  if (mode === "inline" && lines.length > 8) {
+  if (mode === "inline" && lines.length > maxLines) {
     return false;
   }
   if (hasForbiddenArtifacts(normalized)) {
@@ -634,6 +641,9 @@ function isCandidateValid(
   if (hasSuspiciousStandaloneProseLines(normalized, context.languageId)) {
     return false;
   }
+  if (strictInlineMode && mode === "inline" && hasLikelySpeculativeTail(normalized)) {
+    return false;
+  }
   if (isDuplicateOfRecentPrefix(lines, context.prefix, 10)) {
     return false;
   }
@@ -645,9 +655,13 @@ function scoreCandidate(
   text: string,
   context: CompletionContext,
   mode: CompletionMode,
+  options?: PipelineOptions
 ): number {
   const normalized = text.replace(/\r\n?/g, "\n");
   const lines = nonEmptyTrimmedLines(normalized);
+  const maxChars = clampPositive(options?.inlineMaxChars, 700);
+  const maxLines = clampPositive(options?.inlineMaxLines, 8);
+  const strictInlineMode = options?.strictInlineMode === true;
   let score = 1;
 
   if (isMostlyNaturalLanguage(normalized)) {
@@ -656,11 +670,14 @@ function scoreCandidate(
   if (hasForbiddenArtifacts(normalized)) {
     score -= 0.5;
   }
-  if (mode === "inline" && lines.length > 4) {
+  if (mode === "inline" && lines.length > Math.min(4, maxLines)) {
     score -= 0.2;
   }
-  if (mode === "inline" && normalized.length > 320) {
+  if (mode === "inline" && normalized.length > Math.min(320, maxChars)) {
     score -= 0.15;
+  }
+  if (strictInlineMode && mode === "inline" && hasLikelySpeculativeTail(normalized)) {
+    score -= 0.25;
   }
   if (isDuplicateOfRecentPrefix(lines, context.prefix, 10)) {
     score -= 0.4;
@@ -1067,4 +1084,23 @@ function clamp01(value: number): number {
     return 0;
   }
   return Math.max(0, Math.min(1, value));
+}
+
+function hasLikelySpeculativeTail(text: string): boolean {
+  const lines = text.split("\n").map((line) => line.trim());
+  if (lines.length <= 1) {
+    return false;
+  }
+  const joined = lines.join(" ");
+  if (/\b(assuming|maybe|likely|could|should)\b/i.test(joined)) {
+    return true;
+  }
+  return lines.some((line) => /^(import\s+\w+|from\s+\w+\s+import\b)/.test(line));
+}
+
+function clampPositive(value: number | undefined, fallback: number): number {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(1, Math.floor(value as number));
 }

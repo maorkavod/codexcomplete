@@ -2,6 +2,24 @@ import * as vscode from "vscode";
 
 type LogLevel = "INFO" | "WARN" | "ERROR" | "DEBUG";
 
+const REDACTED = "[REDACTED]";
+const REDACTION_RULES: Array<[RegExp, (...args: string[]) => string]> = [
+  [
+    /(\bauthorization\b\s*[:=]\s*["']?\s*bearer\s+)([A-Za-z0-9\-._~+/]+=*)/gi,
+    (_match, prefix) => `${prefix}${REDACTED}`
+  ],
+  [/\bBearer\s+([A-Za-z0-9\-._~+/]+=*)/g, () => `Bearer ${REDACTED}`],
+  [/\bsk-[A-Za-z0-9][A-Za-z0-9_-]{12,}\b/g, () => REDACTED],
+  [
+    /\b(?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|passwd|pwd|secret|token)\b(\s*[:=]\s*["']?)([^"',\s}{\]]{4,})/gi,
+    (_match, separator) => `${separator}${REDACTED}`
+  ],
+  [
+    /([?&](?:api[_-]?key|access[_-]?token|refresh[_-]?token|password|secret|token)=)([^&\s]+)/gi,
+    (_match, prefix) => `${prefix}${REDACTED}`
+  ]
+];
+
 export class Logger implements vscode.Disposable {
   private readonly output: vscode.OutputChannel;
   private readonly terminalEmitter = new vscode.EventEmitter<string>();
@@ -54,10 +72,36 @@ export class Logger implements vscode.Disposable {
   }
 
   private log(level: LogLevel, message: string): void {
-    const line = `[${new Date().toISOString()}] [${level}] ${message}`;
+    const line = `[${new Date().toISOString()}] [${level}] ${redactSensitiveText(message)}`;
     this.output.appendLine(line);
     this.terminalEmitter.fire(`${line}\r\n`);
   }
+}
+
+function redactSensitiveText(text: string): string {
+  if (!mayContainSensitiveContent(text)) {
+    return text;
+  }
+
+  let redacted = text;
+  for (const [pattern, replacement] of REDACTION_RULES) {
+    redacted = redacted.replace(pattern, replacement);
+  }
+  return redacted;
+}
+
+function mayContainSensitiveContent(text: string): boolean {
+  const lower = text.toLowerCase();
+  return (
+    lower.includes("bearer ") ||
+    lower.includes("authorization") ||
+    lower.includes("api_key") ||
+    lower.includes("apikey") ||
+    lower.includes("token") ||
+    lower.includes("secret") ||
+    lower.includes("password") ||
+    lower.includes("sk-")
+  );
 }
 
 function toErrorMessage(value: unknown): string {

@@ -2,7 +2,7 @@
   "name": "codexcomplete",
   "displayName": "CodexComplete",
   "description": "Copilot-style inline autocomplete powered by OpenAI Codex profiles.",
-  "version": "0.0.14",
+  "version": "0.0.15",
   "publisher": "MaorKavod",
   "license": "MIT",
   "icon": "media/marketplace-icon.png",
@@ -127,8 +127,37 @@
         },
         "codexComplete.includeLeadingLogicComment": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "markdownDescription": "When enabled, completions must start with a comment line that briefly explains the logic."
+        },
+        "codexComplete.indentMode": {
+          "type": "string",
+          "enum": [
+            "editor",
+            "language",
+            "smart"
+          ],
+          "default": "smart",
+          "markdownDescription": "Indent strategy for completion insertion. smart = adapt to file/editor context."
+        },
+        "codexComplete.inlineMaxLines": {
+          "type": "number",
+          "default": 8,
+          "minimum": 1,
+          "maximum": 64,
+          "markdownDescription": "Maximum lines allowed for inline completion candidates."
+        },
+        "codexComplete.inlineMaxChars": {
+          "type": "number",
+          "default": 700,
+          "minimum": 32,
+          "maximum": 4000,
+          "markdownDescription": "Maximum characters allowed for inline completion candidates."
+        },
+        "codexComplete.strictInlineMode": {
+          "type": "boolean",
+          "default": false,
+          "markdownDescription": "Use stricter filtering and prompting for concise, deterministic inline completions."
         },
         "codexComplete.dailyTokenLimit": {
           "type": [
@@ -155,7 +184,7 @@
   },
   "scripts": {
     "compile": "npm run build:webview && tsc -p ./",
-    "test:pipeline": "npm run compile && node --test out/aiResponsePipeline.spec.js",
+    "test:pipeline": "npm run compile && node --test out/aiResponsePipeline.spec.js out/insertionFormatter.spec.js",
     "watch": "npm run build:webview && tsc -watch -p ./",
     "vscode:prepublish": "npm run compile",
     "build:webview": "node ./scripts/build-webview.mjs"

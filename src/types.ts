@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 
 export type CompletionMode = "inline" | "manual";
+export type IndentMode = "editor" | "language" | "smart";
 
 export interface ExtensionConfig {
   model: string;
@@ -9,8 +10,17 @@ export interface ExtensionConfig {
   maxContextChars: number;
   enableInline: boolean;
   includeLeadingLogicComment: boolean;
+  indentMode?: IndentMode;
+  inlineMaxLines?: number;
+  inlineMaxChars?: number;
+  strictInlineMode?: boolean;
   dailyTokenLimit: number | null;
   ignorePathRegexes: string[];
+}
+
+export interface EditorIndentation {
+  insertSpaces?: boolean;
+  tabSize?: number;
 }
 
 export interface CompletionContext {
@@ -23,6 +33,9 @@ export interface CompletionContext {
   recentContext: string;
   upcomingContext: string;
   selectedText?: string;
+  insertSpaces?: boolean;
+  tabSize?: number;
+  detectedIndentUnit?: string;
 }
 
 export interface CompletionRequest {
@@ -31,6 +44,9 @@ export interface CompletionRequest {
   timeoutMs: number;
   mode: CompletionMode;
   includeLeadingLogicComment: boolean;
+  strictInlineMode?: boolean;
+  inlineMaxLines?: number;
+  inlineMaxChars?: number;
   context: CompletionContext;
 }
 
@@ -48,6 +64,10 @@ export interface UsageStats {
   lastInputTokens: number;
   lastOutputTokens: number;
   lastTotalTokens: number;
+  suggestionsShown?: number;
+  nullResponses?: number;
+  timeoutResponses?: number;
+  indentCorrections?: number;
   history: UsagePoint[];
 }
 
@@ -69,6 +89,10 @@ export interface DiagnosticsState {
 export interface CompletionResult {
   text: string | null;
   diagnostics: DiagnosticsState;
+  debugMeta?: {
+    score?: number;
+    reason?: string;
+  };
 }
 
 export interface OpenAIResponseBody {

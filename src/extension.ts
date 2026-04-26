@@ -5,7 +5,7 @@ import { OpenAIClient } from "./openaiClient";
 import { CompletionEngine } from "./completionEngine";
 import { DiagnosticsPanel } from "./diagnosticsPanel";
 import { SidebarViewProvider } from "./sidebarViewProvider";
-import { UsageStats } from "./types";
+import { EditorIndentation, UsageStats } from "./types";
 import { Logger } from "./logger";
 
 const USAGE_STATS_KEY = "codexComplete.usageStats";
@@ -47,11 +47,13 @@ export function activate(context: vscode.ExtensionContext): void {
       logger.debug(
         `Inline trigger: mode=inline language=${document.languageId} scheme=${document.uri.scheme}`
       );
+      const editorOptions = resolveEditorIndentationForDocument(document);
       const result = await engine.complete({
         document,
         position,
         mode: "inline",
-        token
+        token,
+        editorOptions
       });
 
       if (!result.text) {
@@ -112,6 +114,10 @@ export function activate(context: vscode.ExtensionContext): void {
         : editor.document.getText(new vscode.Range(selection.start, selection.end));
 
       const tokenSource = new vscode.CancellationTokenSource();
+      const editorOptions: EditorIndentation = {
+        insertSpaces: editor.options.insertSpaces === false ? false : true,
+        tabSize: typeof editor.options.tabSize === "number" ? editor.options.tabSize : undefined
+      };
       const result = await (async () => {
         try {
           return await engine.complete({
@@ -119,7 +125,8 @@ export function activate(context: vscode.ExtensionContext): void {
             position: selection.active,
             selectedText,
             mode: "manual",
-            token: tokenSource.token
+            token: tokenSource.token,
+            editorOptions
           });
         } finally {
           tokenSource.dispose();
@@ -167,4 +174,17 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {
   // No cleanup required for the POC.
+}
+
+function resolveEditorIndentationForDocument(document: vscode.TextDocument): EditorIndentation | undefined {
+  const editor = vscode.window.visibleTextEditors.find(
+    (item) => item.document.uri.toString() === document.uri.toString()
+  );
+  if (!editor) {
+    return undefined;
+  }
+  return {
+    insertSpaces: editor.options.insertSpaces === false ? false : true,
+    tabSize: typeof editor.options.tabSize === "number" ? editor.options.tabSize : undefined
+  };
 }

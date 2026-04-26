@@ -3,11 +3,13 @@ import { ContextCollector } from "./contextCollector";
 import { OpenAIClient } from "./openaiClient";
 import { DiagnosticsPanel } from "./diagnosticsPanel";
 import { Logger } from "./logger";
+import { formatInsertionText } from "./insertionFormatter";
 import {
   CompletionMode,
   CompletionResult,
   ConfigProvider,
   DiagnosticsState,
+  EditorIndentation,
   TokenUsage,
   UsagePoint,
   UsageStats
@@ -26,6 +28,7 @@ export class CompletionEngine {
   private readonly logger: Logger;
 
   private cache = new Map<string, { value: string; ts: number }>();
+  private inFlight = new Map<string, Promise<CompletionResult>>();
   private recentAcceptedByDocument = new Map<string, { text: string; ts: number }>();
   private requestNonce = 0;
   private usageStats: UsageStats;
@@ -63,6 +66,7 @@ export class CompletionEngine {
     mode: CompletionMode;
     token: vscode.CancellationToken;
     selectedText?: string;
+    editorOptions?: EditorIndentation;
   }): Promise<CompletionResult> {
     const config = this.getConfig();
     const start = Date.now();
@@ -72,18 +76,12 @@ export class CompletionEngine {
 
     if (shouldIgnoreDocument(params.document, config.ignorePathRegexes)) {
       this.logger.debug("Completion skipped: document path matched ignore rules.");
-      return {
-        text: null,
-        diagnostics: this.diag(config.model, start, null)
-      };
+      return this.respondWithNoText(config.model, start, null);
     }
 
     if (params.mode === "inline" && !config.enableInline) {
       this.logger.debug("Completion skipped: inline completions are disabled in settings.");
-      return {
-        text: null,
-        diagnostics: this.diag(config.model, start, null)
-      };
+      return this.respondWithNoText(config.model, start, null);
     }
 
     const apiKey = await this.getApiKey();
@@ -91,6 +89,7 @@ export class CompletionEngine {
       this.logger.warn("Completion skipped: missing API key.");
       const diagnostics = this.diag(config.model, start, "Missing API key");
       this.diagnosticsPanel.update(diagnostics);
+      this.recordNullResponse(false);
       return { text: null, diagnostics };
     }
 
@@ -98,13 +97,16 @@ export class CompletionEngine {
       params.document,
       params.position,
       config.maxContextChars,
-      params.selectedText
+      params.selectedText,
+      params.editorOptions
     );
 
     const cacheKey = buildCacheKey(config.model, params.mode, context.prefix, context.suffix);
     const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
       this.logger.debug("Completion served from cache.");
+      this.usageStats.suggestionsShown = (this.usageStats.suggestionsShown ?? 0) + 1;
+      this.persistUsageStats();
       const diagnostics = this.diag(config.model, start, null);
       this.diagnosticsPanel.update(diagnostics);
       return { text: cached.value, diagnostics };
@@ -116,6 +118,7 @@ export class CompletionEngine {
         this.logger.debug("Completion canceled during debounce.");
         const diagnostics = this.diag(config.model, start, "Request canceled");
         this.diagnosticsPanel.update(diagnostics);
+        this.recordNullResponse(false);
         return { text: null, diagnostics };
       }
     }
@@ -132,30 +135,73 @@ export class CompletionEngine {
           `Daily token limit reached (${usedToday}/${config.dailyTokenLimit}).`
         );
         this.diagnosticsPanel.update(diagnostics);
+        this.recordNullResponse(false);
         return { text: null, diagnostics };
       }
     }
 
+    const inFlightKey = `${cacheKey}|${params.position.line}|${params.position.character}`;
+    const existing = this.inFlight.get(inFlightKey);
+    if (existing) {
+      this.logger.debug("Completion joined an in-flight identical request.");
+      const joined = await existing;
+      if (joined.text) {
+        this.usageStats.suggestionsShown = (this.usageStats.suggestionsShown ?? 0) + 1;
+        this.persistUsageStats();
+      }
+      return joined;
+    }
+
+    const work = this.completeInternal({
+      ...params,
+      apiKey,
+      config,
+      context,
+      start,
+      cacheKey
+    }).finally(() => {
+      this.inFlight.delete(inFlightKey);
+    });
+
+    this.inFlight.set(inFlightKey, work);
+    return work;
+  }
+
+  private async completeInternal(params: {
+    document: vscode.TextDocument;
+    position: vscode.Position;
+    mode: CompletionMode;
+    token: vscode.CancellationToken;
+    apiKey: string;
+    config: ReturnType<ConfigProvider>;
+    context: ReturnType<ContextCollector["collect"]>;
+    start: number;
+    cacheKey: string;
+  }): Promise<CompletionResult> {
     const nonce = ++this.requestNonce;
     this.logger.info(
-      `Sending completion request: mode=${params.mode} model=${config.model} prefixChars=${context.prefix.length} suffixChars=${context.suffix.length}`
+      `Sending completion request: mode=${params.mode} model=${params.config.model} prefixChars=${params.context.prefix.length} suffixChars=${params.context.suffix.length}`
     );
     const response = await this.client.complete(
       {
-        apiKey,
-        model: config.model,
-        timeoutMs: config.requestTimeoutMs,
+        apiKey: params.apiKey,
+        model: params.config.model,
+        timeoutMs: params.config.requestTimeoutMs,
         mode: params.mode,
-        includeLeadingLogicComment: config.includeLeadingLogicComment,
-        context
+        includeLeadingLogicComment: params.config.includeLeadingLogicComment,
+        strictInlineMode: params.config.strictInlineMode,
+        inlineMaxLines: params.config.inlineMaxLines,
+        inlineMaxChars: params.config.inlineMaxChars,
+        context: params.context
       },
       params.token
     );
 
     if (params.token.isCancellationRequested || nonce !== this.requestNonce) {
       this.logger.debug("Completion canceled after request start.");
-      const diagnostics = this.diag(config.model, start, "Request canceled");
+      const diagnostics = this.diag(params.config.model, params.start, "Request canceled");
       this.diagnosticsPanel.update(diagnostics);
+      this.recordNullResponse(false);
       return { text: null, diagnostics };
     }
 
@@ -164,38 +210,72 @@ export class CompletionEngine {
       this.logger.warn(`Completion request failed: ${response.error}`);
     } else {
       this.logger.info(
-        `Completion request finished: totalTokens=${response.usage.totalTokens} latencyMs=${Date.now() - start}`
+        `Completion request finished: totalTokens=${response.usage.totalTokens} latencyMs=${Date.now() - params.start}`
       );
     }
 
-    const diagnostics = this.diag(config.model, start, response.error);
+    const diagnostics = this.diag(params.config.model, params.start, response.error);
     this.diagnosticsPanel.update(diagnostics);
 
     let finalText = response.text;
+    let indentCorrected = false;
+
+    if (finalText) {
+      const formatted = formatInsertionText(finalText, params.context, {
+        mode: params.mode,
+        indentMode: params.config.indentMode ?? "smart"
+      });
+      finalText = formatted.text;
+      indentCorrected = formatted.corrected;
+      if (indentCorrected) {
+        this.usageStats.indentCorrections = (this.usageStats.indentCorrections ?? 0) + 1;
+        this.persistUsageStats();
+      }
+    }
 
     if (finalText) {
       const documentKey = params.document.uri.toString();
-      if (shouldSuppressRepeatedAcceptance(finalText, context.prefix, this.recentAcceptedByDocument.get(documentKey))) {
+      const recentAccepted = this.recentAcceptedByDocument.get(documentKey);
+      if (shouldSuppressRepeatedAcceptance(finalText, params.context.prefix, recentAccepted)) {
         this.logger.debug("Completion suppressed due to repeated-acceptance protection.");
         finalText = null;
       }
     }
 
     if (finalText) {
-      this.cache.set(cacheKey, { value: finalText, ts: Date.now() });
+      this.cache.set(params.cacheKey, { value: finalText, ts: Date.now() });
       this.recentAcceptedByDocument.set(params.document.uri.toString(), {
         text: normalizeForComparison(finalText),
-        ts: Date.now(),
+        ts: Date.now()
       });
+      this.usageStats.suggestionsShown = (this.usageStats.suggestionsShown ?? 0) + 1;
+      this.persistUsageStats();
       this.logger.debug(`Completion text received: length=${finalText.length}`);
     } else {
-      this.logger.debug("Completion returned empty text.");
+      const reason = response.debugMeta?.reason ?? response.error ?? "no_text_after_pipeline";
+      this.logger.debug(`Completion returned empty text. reason=${reason}`);
+      this.recordNullResponse(isTimeoutError(response.error));
     }
 
     return {
       text: finalText,
-      diagnostics
+      diagnostics,
+      debugMeta: response.debugMeta
     };
+  }
+
+  private respondWithNoText(model: string, start: number, error: string | null): CompletionResult {
+    const diagnostics = this.diag(model, start, error);
+    this.recordNullResponse(false);
+    return { text: null, diagnostics };
+  }
+
+  private recordNullResponse(timeout: boolean): void {
+    this.usageStats.nullResponses = (this.usageStats.nullResponses ?? 0) + 1;
+    if (timeout) {
+      this.usageStats.timeoutResponses = (this.usageStats.timeoutResponses ?? 0) + 1;
+    }
+    this.persistUsageStats();
   }
 
   private consumeUsage(usage: TokenUsage): void {
@@ -216,6 +296,10 @@ export class CompletionEngine {
       }
     ].slice(-USAGE_HISTORY_LIMIT);
 
+    void this.saveUsageStats(this.getUsageStats());
+  }
+
+  private persistUsageStats(): void {
     void this.saveUsageStats(this.getUsageStats());
   }
 
@@ -322,6 +406,10 @@ function sanitizeUsageStats(raw?: UsageStats): UsageStats {
       lastInputTokens: 0,
       lastOutputTokens: 0,
       lastTotalTokens: 0,
+      suggestionsShown: 0,
+      nullResponses: 0,
+      timeoutResponses: 0,
+      indentCorrections: 0,
       history: parsedHistory
     };
   }
@@ -343,6 +431,10 @@ function sanitizeUsageStats(raw?: UsageStats): UsageStats {
     lastInputTokens: Math.max(0, Math.floor(raw.lastInputTokens ?? lastPoint?.inputTokens ?? 0)),
     lastOutputTokens: Math.max(0, Math.floor(raw.lastOutputTokens ?? lastPoint?.outputTokens ?? 0)),
     lastTotalTokens: Math.max(0, Math.floor(raw.lastTotalTokens ?? lastPoint?.totalTokens ?? 0)),
+    suggestionsShown: Math.max(0, Math.floor(raw.suggestionsShown ?? 0)),
+    nullResponses: Math.max(0, Math.floor(raw.nullResponses ?? 0)),
+    timeoutResponses: Math.max(0, Math.floor(raw.timeoutResponses ?? 0)),
+    indentCorrections: Math.max(0, Math.floor(raw.indentCorrections ?? 0)),
     history: parsedHistory
   };
 }
@@ -401,13 +493,16 @@ function calculateTodayTokenUsage(history: UsagePoint[], now: Date): number {
 
   return history.reduce((sum, entry) => {
     const date = new Date(entry.timestamp);
-    if (
-      date.getFullYear() === year &&
-      date.getMonth() === month &&
-      date.getDate() === day
-    ) {
+    if (date.getFullYear() === year && date.getMonth() === month && date.getDate() === day) {
       return sum + Math.max(0, Math.floor(entry.totalTokens));
     }
     return sum;
   }, 0);
+}
+
+function isTimeoutError(error: string | null): boolean {
+  if (!error) {
+    return false;
+  }
+  return /\btimeout|timed out\b/i.test(error);
 }
